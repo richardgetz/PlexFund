@@ -1,0 +1,73 @@
+{
+  "Library Services": {
+    "Plex": {
+      "active": true,
+      "sections": {
+        "show": 5,
+        "movie": 4
+      },
+      "server_location": "http://YOUR_IP_ADDRESS:32400",
+      "users": [{
+        "name": "YOUR_NAME",
+        "token": "YOUR_TOKEN"
+      }]
+    },
+    "Trakt": {
+      "active": false
+    }
+  },
+  "Content Services": {
+    "Plex": {
+      "active": true,
+      "sections": {
+        "show": 5,
+        "movie": 4
+      },
+      "users": [{
+        "name": "YOUR_NAME",
+        "token": "YOUR_TOKEN"
+      }]
+    },
+    "Trakt": {
+      "active": false,
+      "users": [{
+        "name": "YOUR_NAME",
+        "pin": "YOUR_PIN",
+        "lists_to_use": ["watchlist"]
+      }]
+    },
+    "Overseerr": {
+      "active": false
+    }
+  },
+  "Scraper Settings": {
+    "Languages": ["English", "Italian", "Spanish", "Chinese", "Mandarin", "Korean", "Russian", "German", "Portuguese", "Arabic", "French", "Hindi", "Japanese"],
+    "Sources": {
+      "jackett": {
+        "api_key": "YOUR_API_KEY"
+      }
+    }
+  },
+  "Debrid Services": {
+    "Real Debrid": {
+      "active": true,
+      "api_key": "YOUR_API_KEY"
+    },
+    "All Debrid": {
+      "active": false
+    },
+    "Premiumize": {
+      "active": false
+    },
+    "Debrid Link": {
+      "active": false
+    },
+    "PUT.io": {
+      "active": false
+    }
+  },
+  "Debrid Settings": {
+    "uncached_release": false
+  },
+  "UI Settings": {}
+}
