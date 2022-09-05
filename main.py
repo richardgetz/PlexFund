@@ -20,7 +20,8 @@ cc = coco.CountryConverter()
 trakt.APPLICATION_ID = "101039"
 RD = RealDebrid(api_key=settings.CONFIG["Debrid Services"]["Real Debrid"]["api_key"])
 jack = Jackett(
-    api_key=settings.CONFIG["Scraper Settings"]["Sources"]["jackett"]["api_key"]
+    api_key=settings.CONFIG["Scraper Settings"]["Sources"]["jackett"]["api_key"],
+    base_url=settings.CONFIG["Scraper Settings"]["Sources"]["jackett"]["base_url"],
 )
 PlexAccount = None
 
