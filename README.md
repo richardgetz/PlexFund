@@ -23,6 +23,6 @@ Insert your Plex Token and Real Debrid API keys in a settings.json file.
 
 # Kudos
 
-itsToggle - https://github.com/itsToggle/plex_debrid
-Jackett Maintainers - https://github.com/Jackett/Jackett
-Python PlexAPI Maintainers - https://github.com/pkkid/python-plexapi
+- itsToggle - https://github.com/itsToggle/plex_debrid
+- Jackett Maintainers - https://github.com/Jackett/Jackett
+- Python PlexAPI Maintainers - https://github.com/pkkid/python-plexapi
