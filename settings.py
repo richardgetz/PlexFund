@@ -87,11 +87,14 @@ except:
 RESOLUTION_SCORE = {
     "None": 0,
     "CAM": 1,
+    "HQCAM": 1.5,
+    "HDCAM": 1.5,
     "SD": 2,
     "240": 1,
     "480": 2,
     "720": 3,
     "HD": 3,
+    "BRRIP": 3.5,
     "1080": 4,
     "FHD": 4,
     "2160": 5,
@@ -107,10 +110,9 @@ MINIMUM_RESOLUTION = 0
 RE_SHOW_TITLE = "([A-z0-9\-\.\_\s'\"\!\?\(\)].*?)"
 RE_SEPARATORS = "(?:[\-\s\_\.])"
 RE_SITE_INFO = "(?:\[.*?\]%s\-%s)" % (RE_SEPARATORS, RE_SEPARATORS,)
-RE_SEASON = "(?:S(?:(?:EASONE?|ERIES)%s?)?((?:[0-9]){1,5}))(?:%s(COMPLETE))?%s?" % (
-    RE_SEPARATORS,
-    RE_SEPARATORS,
-    RE_SEPARATORS,
+RE_SEASON = (
+    "(?:S(?:(?:EASONE?|ERIES)%s?)?((?:[0-9]){1,5}))(?:(?:%s?(?:WEBRip)?%s?)(COMPLETE|CRR))?%s?"
+    % (RE_SEPARATORS, RE_SEPARATORS, RE_SEPARATORS, RE_SEPARATORS,)
 )
 RE_EPISODE = "(?:(?:E(?:PISODE%s?)?)((?:[0-9]\-?[0-9]?){1,5}))?" % (RE_SEPARATORS)
 RE_TV_SHOW = re.compile(
@@ -118,9 +120,10 @@ RE_TV_SHOW = re.compile(
     % (RE_SITE_INFO, RE_SHOW_TITLE, RE_SEPARATORS, RE_SEASON, RE_EPISODE),
     flags=re.IGNORECASE,
 )
-
+RE_GUIDS = re.compile(r"(.*?)(?:\:\/\/)(.*)", flags=re.IGNORECASE)
 RE_RESOLUTION = re.compile(
-    r"(4320|4K|2160|FHD|UHD|HD|1080|720|480|SD|240|CAM|WEB)p?", flags=re.IGNORECASE
+    r"(HQCAM|HDCAM|BRRIP|4320|4K|2160|FHD|UHD|HD|1080|720|480|SD|240|CAM|WEB)p?",
+    flags=re.IGNORECASE,
 )
 REPLACE_CHARS = [
     ("&", "and"),

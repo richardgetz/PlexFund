@@ -84,9 +84,9 @@ class RealDebrid:
                     flags=re.IGNORECASE,
                 ):
                     files.append(str(f["id"]))
-                    print("Selecting", f["path"])
-            files = ",".join(files)
-            print("Selections", files)
+                    # print("Selecting", f["path"])
+            # files = ",".join(files)
+            # print("Selections", files)
         if files != "":
             response = self.sess.post(
                 f"{self.base_url}/torrents/selectFiles/{id}",
@@ -118,13 +118,42 @@ class RealDebrid:
                 response = self.sess.post(
                     f"{self.base_url}/torrents/addMagnet", data={"magnet": magnet},
                 )
+                print(response.status_code)
                 if str(response.status_code).startswith("2"):
                     return response.json()["id"]
+                if response.status_code == 403:
+                    print(response.reason)
+                    return None
+                else:
+                    print(response.reason)
+                    return None
                 counter += 1
                 time.sleep(0.2)
 
         except Exception as e:
             print(e)
+        return None
+
+    def add_torrent(self, data, retry_attempts=3):
+        counter = 0
+        while counter < retry_attempts:
+            try:
+                response = self.sess.put(
+                    f"{self.base_url}/torrents/addTorrent", data=data,
+                )
+                print(response.status_code)
+                if response.status_code == 201:
+                    return response.json()["id"]
+                if response.status_code == 403:
+                    print(response.reason)
+                    return None
+                else:
+                    print(response.reason)
+                    return None
+                time.sleep(0.5)
+            except Exception as e:
+                print(e)
+            counter += 1
         return None
 
     def get_torrents(self, page=1):

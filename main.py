@@ -14,10 +14,14 @@ from difflib import SequenceMatcher
 import trakt
 from threading import Thread
 import country_converter as coco
+from jackett import Jackett
 
 cc = coco.CountryConverter()
 trakt.APPLICATION_ID = "101039"
 RD = RealDebrid(api_key=settings.CONFIG["Debrid Services"]["Real Debrid"]["api_key"])
+jack = Jackett(
+    api_key=settings.CONFIG["Scraper Settings"]["Sources"]["jackett"]["api_key"]
+)
 PlexAccount = None
 
 
@@ -97,11 +101,11 @@ def compare_names(name1, name2):
 
     sub_score = similar(name1.lower(), name2.lower())
     if sub_score > 0.90:
-        print("90% but skipping", name1.lower(), name2.lower())
+        # print("90% but skipping", name1.lower(), name2.lower())
         return 0
         return 2
     if name1.lower().startswith(name2.lower()):
-        print("starts with but skipping", name1.lower(), name2.lower())
+        # print("starts with but skipping", name1.lower(), name2.lower())
         return 0
         return 1
     return 0
@@ -111,7 +115,8 @@ def compare_names(name1, name2):
     return 0
 
 
-def show_classify(title, target_title):
+def show_classify(title, target_title, get_score=True):
+
     m1 = settings.RE_TV_SHOW.search(title)
     m2 = settings.RE_RESOLUTION.search(title)
 
@@ -127,78 +132,140 @@ def show_classify(title, target_title):
 
         if m1.group(2):
             if m1.group(2) == "00":
-                seasons = [0]
+                seasons = []
             elif "-" in m1.group(2):
                 s_temp = m1.group(2).split("-")
                 seasons = [int(s.lstrip("0")) for s in s_temp]
             else:
                 seasons = [int(m1.group(2).lstrip("0"))]
         if m1.group(3):
-            if m1.group(3).strip().lower() == "complete":
-                need_episodes = False
+            if m1.group(3).strip().lower() in ["complete", "crr"]:
+                # print("found real complete", m1.group(3).strip().lower())
                 complete = True
         if m1.group(4) and need_episodes:
             if m1.group(4) == "00":
-                episodes = [0]
+                episodes = []
             elif "-" in m1.group(4):
                 e_temp = m1.group(4).split("-")
                 episodes = [int(e.lstrip("0")) for e in e_temp]
             else:
                 episodes = [int(m1.group(4).lstrip("0"))]
+        # still playing with the best way to do this
+        elif len(seasons) > 0:
+            complete = True
 
     if m2:
         if m2.group(1):
             resolution = settings.RESOLUTION_SCORE.get(m2.group(1).upper(), 0)
-    score = compare_names(file_name, target_title)
+    if get_score:
+        score = compare_names(file_name, target_title)
+    else:
+        score = 4
+    # if "custom" in title.lower():
+    #     score -= 2
     return file_name, seasons, episodes, resolution, score, complete
 
 
 # will eventually integrate max/min resolution checjk here
-def torrent_decision_tree(
-    items, show, number_of_seasons=0, type="show", season_inference=False
-):
+def torrent_decision_tree(items, media, type="show"):
     # todo add movie
-    if type in ["episode"]:
+    media["available_sources"] = []
+    if type in ["episode", "season", "show"]:
         for item in items:
-            # todo make episode match exact so it pulls back just that single file
+            get_score = True
+            if (media["ids"].get("imdb", "01") == item.get("Imdb", "00")) or (
+                media["ids"].get("tmdb", "01") == item.get("TMDb", "00")
+            ):
+                get_score = False
             file_name, seasons, episodes, resolution, score, complete = show_classify(
-                item["name"], show["title"]
+                item["Title"], media["title"], get_score=get_score
             )
-            # eventually rework to make this seasons without episodes
-            if show["episode"] not in episodes or show["season"] not in seasons:
+            if media["season"] not in seasons:
+                # print("wrong seasons", media["season"], "-", seasons)
+                continue
+            if not complete and media["episode"] not in episodes:
+                # print("no episode", media["episode"], "-", episodes)
                 continue
             if score == 0:
-                print(
-                    "Scored too low:",
-                    score,
-                    "\nSkipping",
-                    item["name"],
-                    "compared to",
-                    show["title"],
-                )
+                # print(
+                #     "Scored too low:",
+                #     score,
+                #     "\nSkipping",
+                #     item["Title"],
+                #     "compared to",
+                #     media["title"],
+                # )
                 continue
             if resolution < settings.MINIMUM_RESOLUTION:
                 print("Skipping low res")
                 continue
-            if not show.get("link", False):
-                show["link"] = item["link"]
-                show["score"] = score
-                show["resolution"] = resolution
-                show["torrent_name"] = file_name
-                continue
-            if show.get("resolution", -1) < resolution:
-                show["link"] = item["link"]
-                show["score"] = score
-                show["resolution"] = resolution
-                show["torrent_name"] = file_name
-                continue
-            if show.get("score", -1) < score:
-                show["link"] = item["link"]
-                show["score"] = score
-                show["resolution"] = resolution
-                show["torrent_name"] = file_name
-                continue
-        return show
+
+            if item.get("Link", False):
+                link = item["Link"]
+
+            elif item.get("MagnetUri", False):
+                link = item["MagnetUri"]
+            if link.startswith("magnet"):
+                link_type = "magnet"
+            else:
+                link_type = "file"
+            aggregate_score = score + resolution
+            if complete:
+                aggregate_score += 3
+
+            media["available_sources"].append(
+                {
+                    "link": link,
+                    "link_type": link_type,
+                    "score": score,
+                    "resolution": resolution,
+                    "torrent_name": file_name,
+                    "complete": complete,
+                    "aggregate_score": aggregate_score,
+                }
+            )
+            # eventually rework to make this seasons without episodes
+            # if complete and media["season"] in seasons:
+            #     if (
+            #         not media.get("link", False)
+            #         or media.get("resolution", -1) < resolution
+            #         or media.get("score", -1) < score
+            #         or not media.get("complete_season", False)
+            #     ):
+            #         if item.get("Link", False):
+            #             media["link"] = item["Link"]
+            #             media["link_type"] = "file"
+            #         elif item.get("MagnetUri", False):
+            #             media["link"] = item["MagnetUri"]
+            #             media["link_type"] = "magnet"
+            #         if media["link"].startswith("magnet"):
+            #             media["link_type"] = "magnet"
+            #         media["score"] = score
+            #         media["resolution"] = resolution
+            #         media["torrent_name"] = file_name
+            #         media["complete_season"] = complete
+            #         continue
+            # elif media["episode"] in episodes and media["season"] in seasons:
+            #     if (
+            #         not media.get("link", False)
+            #         or media.get("resolution", -1) < resolution
+            #         or media.get("score", -1) < score
+            #         or not media.get("complete_season", False)
+            #     ):
+            #         if item.get("Link", False):
+            #             media["link"] = item["Link"]
+            #             media["link_type"] = "file"
+            #         elif item.get("MagnetUri", False):
+            #             media["link"] = item["MagnetUri"]
+            #             media["link_type"] = "magnet"
+            #         if media["link"].startswith("magnet"):
+            #             media["link_type"] = "magnet"
+            #         media["score"] = score
+            #         media["resolution"] = resolution
+            #         media["torrent_name"] = file_name
+            #         media["complete_season"] = complete
+            #         continue
+        return media
 
 
 def get_watchlist_thread():
@@ -227,30 +294,19 @@ def get_library_thread():
 
 def get_needed(watchlist, library):
     final_content = []
-    # for l in library.all():
-    #     if l.type == "show":
-    #         print(l.title)
-    #         for season in l.seasons():
-    #             for ep in season.episodes():
-    #                 print(ep.__dict__)
-    #                 print(ep.lastViewedAt, ep.parentIndex, ep.index)
-
     for m in watchlist:
+        ids = {}
+        for g in m.guids:
+            ls = settings.RE_GUIDS.search(g.id)
+            if ls:
+                ids[str(ls.group(1))] = str(ls.group(2))
         if m.type == "show":
-            print(m.title)
-            print(m.childCount)
-            # print(m.key)
-            # for x in range(1, m.childCount + 1):
-            #     season = m.season(x)
-            #     PlexAccount._toOnlineMetadata([season])
+
             for season in m.seasons():
                 if season.index == 0:
                     continue
                 PlexAccount._toOnlineMetadata([season])
-                print("Season", season.index)
-
                 if season.isPlayed:
-                    print(season.viewedLeafCount, "/", season.leafCount)
                     continue
                 for ep in season.episodes():
                     # look into why this works later bc this was luck lol
@@ -262,6 +318,8 @@ def get_needed(watchlist, library):
                                 "episode": ep.index,
                                 "title": ep.grandparentTitle,
                                 "query": f"{ep.grandparentTitle} S{ep.parentIndex:02d}E{ep.index:02d}",
+                                "season_query": f"{ep.grandparentTitle} S{ep.parentIndex:02d}",
+                                "ids": ids,
                             }
                         )
 
@@ -273,6 +331,7 @@ def get_needed(watchlist, library):
                         "type": m.type,
                         "title": m.title,
                         "query": f"{str(m.title)} {str(m.year)}",
+                        "ids": ids,
                     }
                 )
     return final_content
@@ -284,6 +343,31 @@ def remove_watched():
             print("delete (will need an easy way to lookup)")
 
 
+def attempt_and_collect(sources):
+    print("starting RD collect")
+    sources = sorted(sources, key=lambda d: d["aggregate_score"], reverse=True)
+    for source in sources:
+        try:
+            print(source["aggregate_score"])
+            torrent_id = None
+            if source.get("link", False):
+                if source["link_type"] == "magnet":
+                    torrent_id = RD.add_magnet(source["link"])
+                    print(torrent_id)
+                if source["link_type"] == "file":
+                    print("Torrent file")
+                    file_data = jack.get_torrent_file(source["link"])
+                    torrent_id = RD.add_torrent(file_data)
+                    print(torrent_id)
+        except Exception as e:
+            print(e)
+            continue
+        if torrent_id:
+            RD.select_torrent_files(torrent_id)
+            return True
+    return False
+
+
 def main():
     if not preflight():
         print("Setup not built yet")
@@ -291,81 +375,57 @@ def main():
     content_threads = []
     magnets = set()
     watchlist_data = content_collection("Plex")
-    already_have = library_collection("Plex")
-    content_tracker = get_needed(watchlist_data, already_have)
+    library = library_collection("Plex")
+    content_tracker = get_needed(watchlist_data, library)
+    titles_collected = []
+    seasons_checked = []
+
     # threadpool for this isntead
     for data in tqdm(content_tracker):
-        print("starting", data["title"])
+        print("starting", data["query"])
         if data["type"] == "episode":
-            cat = "tv"
-            max = 5
+            cat = 5000
         if data["type"] == "movie":
-            cat = "movie"
-            max = 10
+            cat = 2000
             continue
         try:
-            response = torrse.search(
-                data["query"],
-                cat,
-                max,
-                magnet=False,
-                engines=[
-                    # torrse.engine_1337x,
-                    torrse.engine_limetorrents,
-                    torrse.engine_zooqle,
-                    torrse.engine_magnetdl,
-                    # torrse.engine_uniondht,
-                    # torrse.engine_kickasstorrents,
-                ],
-            )
-            data = torrent_decision_tree(
-                response, data, number_of_seasons=None, type=data["type"],
-            )
+            if data["type"] == "episode":
+                found = False
+                if (
+                    data["season_query"] in titles_collected
+                    or data["query"] in titles_collected
+                ):
+                    print("Skipping", data["query"])
+                    print(titles_collected)
+                    continue
+                if data["season_query"] not in seasons_checked:
+
+                    response = jack.search(query=data["season_query"], categories=[cat])
+                    if len(response) > 0:
+                        data = torrent_decision_tree(response, data, type=data["type"],)
+                        if len(data.get("available_sources", [])) > 0:
+                            if attempt_and_collect(data["available_sources"]):
+                                titles_collected.append(data["season_query"])
+                                seasons_checked.append(data["season_query"])
+                                found = True
+                        seasons_checked.append(data["season_query"])
+                if not found:
+                    response = jack.search(query=data["query"], categories=[cat])
+                    if len(response) > 0:
+                        data = torrent_decision_tree(response, data, type=data["type"],)
+                        if len(data.get("available_sources", [])) > 0:
+                            if attempt_and_collect(data["available_sources"]):
+                                found = True
+                                titles_collected.append(data["query"])
         except Exception as e:
             print(e)
             continue
-        print(data)
-        if data.get("link", False):
-            mag = torrse.get_magnet(data["link"])
-            if not mag:
-                print(
-                    "No magnet?", data["link"],
-                )
-            # print(mag)
-            # will have to change depending on debrid service
-            # add them all now then run auto clean later to determine
-            mag_id = RD.add_magnet(mag)
-            if mag_id:
-                data["current_magnet"] = {
-                    "service": "realdebrid",
-                    "id": mag_id,
-                }
-    with open("torrent_cache.json", "w") as f:
-        json.dump(content_tracker, f, indent=4)
-    # magnets = list(magnets)
-    # RD.add_magnets(magnets)
+
+    print("Attempting library update")
+    library.update()
+    # with open("torrent_cache.json", "w") as f:
+    #     json.dump(content_tracker, f, indent=4)
 
 
 if __name__ == "__main__":
     main()
-
-    # plex_server = PlexServer(
-    #     baseurl=settings.CONFIG["Library Services"]["Plex"]["server_location"],
-    #     token=settings.CONFIG["Content Services"]["Plex"]["users"][0]["token"],
-    # )
-    # print(len(plex_server.library.all()))
-    # for s in plex_server.library.search(unwatched=True):
-    #     print(s.__dict__)
-
-    # print(compare_names("The-Challenge-USA", "The-Challenge"))
-    # needed = get_needed(content_collection("Plex"), library_collection("Plex"))
-    # lib = get_library_thread()
-    # lib = library_collection("Plex")
-    # print(lib.search(libtype="show", title="The Challenge",)[0].seasons())
-    # r = content_collection("Trakt")
-    # print(compare_names("The Challenge", "the-challenge"))
-    # this will need to be done an episode level to know if a new episode should be downloaded
-    # write large can look at the over all episode count to also determine if needed to kick off the process at all
-    # library = library_collection("Plex", "5d9c08780aaccd001f8f0ba0")
-    # print(library)
-    # print(library.keys())

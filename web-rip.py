@@ -1,131 +1,188 @@
-from typing import List
-from datetime import datetime
+from requests import get, post
 import requests
-from seleniumwire import webdriver  # Import from seleniumwire
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
-from selenium_stealth import stealth
-from selenium.webdriver import ActionChains
-
+from bs4 import BeautifulSoup
 import m3u8_To_MP4
-import json
-import time
-
-# Make browser open in background
-options = webdriver.ChromeOptions()
-options.add_argument("start-maximized")
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_experimental_option("useAutomationExtension", False)
-options.add_argument("headless")
-caps = DesiredCapabilities.CHROME
-caps["goog:loggingPrefs"] = {"performance": "ALL"}
-# Create the webdriver object
-browser = webdriver.Chrome(
-    service=Service(ChromeDriverManager().install()),
-    options=options,
-    desired_capabilities=caps,
-)
-actionChains = ActionChains(browser)
-stealth(
-    browser,
-    languages=["en-US", "en"],
-    vendor="Google Inc.",
-    platform="Win32",
-    webgl_vendor="Intel Inc.",
-    renderer="Intel Iris OpenGL Engine",
-    fix_hairline=True,
-)
-
-import requests
-import youtube_dl
-
-
-def processLog(log):
-    log = json.loads(log["message"])["message"]
-    # print(log["method"])
-    if "Network.response" in log["method"] and log.get("params", False):
-        # print(log["params"])
-        try:
-            body = browser.execute_cdp_cmd(
-                "Network.getResponseBody", {"requestId": log["params"]["requestId"]}
+import re
+stream_preferences_order = ["Streamlare", "Vidcloud"]
+BASE_VIDEO_PATH="/volume1/media-files"
+TV_FOLDER = "/tv-shows"
+MOVIES_FOLDER="/movies"
+def get_vidcloud_stream(id,season=None, episode=None ,type="show",m3u8=False):
+    try:
+        if type == "movie":
+            media_server = (
+                BeautifulSoup(
+                    get(
+                        "https://www.2embed.to/embed/imdb/movie?id={}".format(id),
+                        headers={"user-agent": "Mozilla/5.0"},
+                    ).text,
+                    "html.parser",
+                )
+                .find("div", class_="media-servers dropdown")
+                .find("a")["data-id"]
             )
-        except:
-            return None
-        return body
-        # return log["params"]
-
-
-def get_show_playlist(tmdb_id, season, episode):
-    url = f"https://www.2embed.to/embed/tmdb/tv?id={tmdb_id}&s={season}&e={episode}"
-    browser.get(url)
-    pending = True
-    handle = browser.current_window_handle
-    print(handle)
-    while pending:
-        try:
-            pending = browser.find_element(By.XPATH, "//div[@id='content-pending']")
-            if pending:
-                try:
-                    # pending.click()
-                    button = pending.find_element(By.XPATH, "//div[@id='play-now']")
-                    actionChains.move_to_element(button).click().perform()
-                    # location = button.location
-                    # browser.execute_script("arguments[0].click();", pending)
-                    time.sleep(1)
-
-                    browser.switch_to.window(handle)
-                    # time.sleep(1 / 2)
-                    # actionChains.move_to_element(button).click().perform()
-                    # time.sleep(1)
-                    # browser.execute_script("arguments[0].click();", pending)
-                except Exception as e:
-                    print("Issue", e)
-                    time.sleep(3)
-        except:
-            time.sleep(3)
-            break
-    return browser.requests
-    # responses = [processLog(log) for log in logs]
-    # return responses
-
-
-# def search():
-#     print()
-#
-#
-# # {'outtmpl': '%(id)s.%(ext)s'}
-
-
-# if 'entries' in result:
-#     # Can be a playlist or a list of videos
-#     video = result['entries'][0]
-# else:
-#     # Just a video
-#     video = result
-
-# print(video)
-# video_url = video['url']
-# print(video_url)
-
-if __name__ == "__main__":
-    reqs = get_show_playlist(tmdb_id=126301, season=1, episode=1)
-    for request in reqs:
-        if request.response:
-            print(
-                request.url,
-                request.response.status_code,
-                request.response.headers["Content-Type"],
+        if type == "show":
+            media_server = (
+                BeautifulSoup(
+                    get(
+                        f"https://www.2embed.to/embed/imdb/tv?id={id}&s={season}&e={episode}",
+                        headers={"user-agent": "Mozilla/5.0"},
+                    ).text,
+                    "html.parser",
+                )
+                .find("div", class_="media-servers dropdown")
+                .find("a")["data-id"]
             )
-    # print(r)
-    # print(r)
-    # ydl = youtube_dl.YoutubeDL()
-    # with ydl:
-    #     result = ydl.download(
-    #         ["https://rabbitstream.net/44e35cd8-2cbe-4303-9c50-d3cc0a8c70ca"],
-    #     )
-    #     print(result)
-    # get_show_base("The Challenge", 35)
-    # m3u8_url = "https://b-g-ca-6.feetcdn.com:2223/v3-hls-playback/0f9839f631ff1854acba60da23a45c2567c4c7476848893b935798528a23c593f6250815cf2527762264a8eee014a32b9c3bc7f2d6549b32f9890d7af7c6ee25ed91432adf5cde1a3dc260eb27fade00fcc7d0b087806eb47d98d9322da34cd6b8c594f0af50857e33ec1e32da8be36d33afe01df9a828fdabfa40c792af2812e35786bd96e167bc51929ee742fab3a0a306b0926d6ef9daec12f2fb41d03377f415f4ce60c43f1e9d7b14a17757b61d0c53f178ad9db53543687e03d83e3670/720/index.m3u8"
-    # m3u8_To_MP4.multithread_download(m3u8_url)
+            print(media_server)
+        recaptcha_resp = get(
+            "https://recaptcha.harp.workers.dev/?anchor=https%3A%2F%2Fwww.google.com%2Frecaptcha%2Fapi2%2Fanchor%3Far%3D1%26k%3D6Lf2aYsgAAAAAFvU3-ybajmezOYy87U4fcEpWS4C%26co%3DaHR0cHM6Ly93d3cuMmVtYmVkLnRvOjQ0Mw..%26hl%3Den%26v%3DPRMRaAwB3KlylGQR57Dyk-pF%26size%3Dinvisible%26cb%3D7rsdercrealf&reload=https%3A%2F%2Fwww.google.com%2Frecaptcha%2Fapi2%2Freload%3Fk%3D6Lf2aYsgAAAAAFvU3-ybajmezOYy87U4fcEpWS4C"
+        ).json()["rresp"]
+        vidcloudresp = get(
+            "https://www.2embed.to/ajax/embed/play",
+            params={"id": media_server, "_token": recaptcha_resp},
+        )
+        vid_id = vidcloudresp.json()["link"].split("/")[-1]
+        rbstream = "https://rabbitstream.net/embed/m-download/{}".format(
+            vid_id)
+        soup = BeautifulSoup(get(rbstream).text, "html.parser")
+        return [
+            a["href"] for a in soup.find("div", class_="download-list").find_all("a")
+        ] if not m3u8 else vid_id
+    except:
+        return None
+
+
+def get_m3u8_rabbitstream(id):
+    url = "https://rabbitstream.net/embed-5/{}".format(id)
+    headers = {
+        "referer": "https://www.2embed.to/",
+    }
+    params = {
+        'id': id.split("?")[0],
+        '_number': '1',
+        'sId': 'tMK9W5pbb5PYDSCEuuMt',
+    }
+    resp = get("https://rabbitstream.net/ajax/embed-5/getSources", headers=headers, params=params).json()
+    return resp
+
+class StreamGrabber:
+    def __init__(self, id, type, id_type="imdb",season=None, episode=None):
+        self.base_url = "https://www.2embed.to"
+        self.recaptcha_resp=None
+        self.id = id
+        self.type = type
+        self.id_type = id_type
+        self.season = season
+        self.episode = episode
+        self.embed_headers= {
+            "referer": "https://www.2embed.to/",
+        }
+        self.m3u8_params = {
+            'id': self.id.split("?")[0],
+            '_number': '1',
+            'sId': 'tMK9W5pbb5PYDSCEuuMt',
+        }
+        if self.type == "show":
+            if not self.season:
+                print("Must include a season number")
+                return
+            if not self.episode:
+                print("Must include an episode number")
+                return
+    def get_available_servers(self):
+        if self.type == "show":
+            servers = (
+                BeautifulSoup(
+                    requests.get(
+                        f"{self.base_url}/embed/{self.id_type}/tv?id={self.id}&s={self.season}&e={self.episode}",
+                        headers={"user-agent": "Mozilla/5.0"},
+                    ).text,
+                    "html.parser",
+                )
+                .find("div", class_="media-servers dropdown")
+                .find_all("a")
+            )
+            self.available_servers = {}
+            for s in servers:
+                self.available_servers[s.text.split("Server ")[-1].lower()]:{"id":s["data-id"], "name":s.text.split("Server ")[-1]})
+    def get_captcha(self):
+        self.recaptcha_resp = requests.get(
+            "https://recaptcha.harp.workers.dev/?anchor=https%3A%2F%2Fwww.google.com%2Frecaptcha%2Fapi2%2Fanchor%3Far%3D1%26k%3D6Lf2aYsgAAAAAFvU3-ybajmezOYy87U4fcEpWS4C%26co%3DaHR0cHM6Ly93d3cuMmVtYmVkLnRvOjQ0Mw..%26hl%3Den%26v%3DPRMRaAwB3KlylGQR57Dyk-pF%26size%3Dinvisible%26cb%3D7rsdercrealf&reload=https%3A%2F%2Fwww.google.com%2Frecaptcha%2Fapi2%2Freload%3Fk%3D6Lf2aYsgAAAAAFvU3-ybajmezOYy87U4fcEpWS4C"
+        ).json()["rresp"]
+    def get_stream(self, id):
+        # if not self.recaptcha_resp:
+        self.get_captcha()
+        response = requests.get(
+            "https://www.2embed.to/ajax/embed/play",
+            params={"id": id, "_token": self.recaptcha_resp},
+        )
+        return response.json()
+    def get_file_link(self, name, link):
+        if name.lower() == "streamlare":
+            id = link.split("/")[-1]
+            response = requests.post("https://sltube.org/api/video/stream/get", headers={"referer":f"https://sltube.org/e/{id}"}, data={"id":id})
+            data = response.json()
+            if data.get("type", None) == "mp4":
+
+                #instead iterate over result keys and grab original if they have it if not, highest quality
+                if "Original" in data["result"].keys():
+                    return data["result"]["Original"]["file"], data["type"]
+                if "4K" in data["result"].keys():
+                    return data["result"]["4K"]["file"], data["type"]
+                if "1080p" in data["result"].keys():
+                    return data["result"]["1080p"]["file"], data["type"]
+                if "720p" in data["result"].keys():
+                    return data["result"]["720p"]["file"], data["type"]
+                if "480p" in data["result"].keys():
+                    return data["result"]["720p"]["file"], data["type"]
+                if "360p" in data["result"].keys():
+                    return data["result"]["360p"]["file"], data["type"]
+                # download_file(next["result"]["Original"]["file"], filename="test.mp4")
+        if name.lower() == "vidcloud":
+            response = requests.get(link, headers={"referer": "https://www.2embed.to/"})
+            m = re.search(r'(recaptchaNumber\s?\=\s?[\'\"](\d)[\'\"])',response.text)
+            recaptcha_number='1'
+            if m.group(1):
+                recaptcha_number = str(m.group(1))
+            response = requests.get("https://rabbitstream.net/ajax/embed-5/getSources", headers = {
+                "referer": "https://www.2embed.to/",
+            }, params = {
+                'id': link.split("/")[-1].split("?")[0],
+                '_number': recaptcha_number,
+                'sId': 'tMK9W5pbb5PYDSCEuuMt',
+            })
+            for source in response.json()["sources"]:
+                if source["type"] == 'hls':
+                    return source["file"], "m3u8"
+            return None, None
+        else:
+            print(name, "not yet implemented")
+            return None, None
+def download_file(url, filename=None):
+    if not filename:
+        filename = url.split('/')[-1]
+    # NOTE the stream=True parameter below
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(filename, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                # If you have chunk encoded response uncomment if
+                # and set chunk_size parameter to None.
+                #if chunk:
+                f.write(chunk)
+    return filename
+if __name__ == '__main__':
+    stream = StreamGrabber("tt11173006","show", season=1, episode=1)
+    stream.get_available_servers()
+    for n in stream_preferences_order:
+        if stream.available_servers.get(n.lower(), False):
+            data = stream.get_stream(k["id"])
+            file_url, type = stream.get_file_link(k["name"], data["link"])
+            if file_url and type:
+                if type.lower() in ["mp4", "mkv", "mov", "wmv", "avi"]:
+                    download_file(file_url, filename=f"{BASE_VIDEO_PATH}/name.of.show.SNNENN.ext")
+                if type.lower() in ["m3u8", "hls"]:
+                    #todo filename/path
+                    m3u8_To_MP4.multithread_uri_download(file_url, customied_http_header={
+                        "referer": "https://www.2embed.to/",
+                    })
