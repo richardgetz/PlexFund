@@ -44,7 +44,8 @@
     "Languages": ["English", "Italian", "Spanish", "Chinese", "Mandarin", "Korean", "Russian", "German", "Portuguese", "Arabic", "French", "Hindi", "Japanese"],
     "Sources": {
       "jackett": {
-        "api_key": "YOUR_API_KEY"
+        "api_key": "YOUR_API_KEY",
+        "base_url": "http://localhost:9117"
       }
     }
   },
